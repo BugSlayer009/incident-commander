@@ -61,12 +61,6 @@ const C = {
 const NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "timeline", label: "Timeline", icon: History },
-  { id: "actions", label: "Actions", icon: ListChecks },
-  { id: "assistant", label: "AI Assistant", icon: Bot },
-  { id: "incidents", label: "Incidents", icon: AlertTriangle },
-  { id: "integrations", label: "Integrations", icon: Plug },
-  { id: "reports", label: "Reports", icon: FileBarChart },
-  { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
 const PARTICIPANTS = [
@@ -198,7 +192,7 @@ export default function SyntrixIncidentCommander() {
         {view === "timeline" && <TimelineView items={incidentState.timeline} />}
         {view === "actions" && <ActionsView items={incidentState.actions} />}
         {view === "assistant" && <AssistantView state={incidentState} />}
-        {["incidents", "integrations", "reports", "settings"].includes(view) && <Placeholder label={NAV.find((n) => n.id === view).label} />}
+        
       </main>
     </div>
   );
