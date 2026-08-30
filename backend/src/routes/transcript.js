@@ -11,6 +11,7 @@ export default function transcriptRouter(io) {
 
     try {
       const classified = await classifyChunk(text, speaker, role || "unknown");
+      console.log("Classified result:", JSON.stringify(classified, null, 2));
       if (classified.type !== "irrelevant") {
         const entry = addClassifiedItem({
           type: classified.type,
