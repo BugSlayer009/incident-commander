@@ -203,7 +203,7 @@ You'll need free keys from:
 | Name | Role |
 |---|---|
 | Shivam Shukla | Backend & Systems |
-| Arpit Singh Baghel | — |
+| Arpit Singh Baghel | Frontend & Deployment |
 
 ---
 
