@@ -12,6 +12,7 @@ export default function transcriptRouter(io) {
     try {
       const classified = await classifyChunk(text, speaker, role || "unknown");
       console.log("Classified result:", JSON.stringify(classified, null, 2));
+
       if (classified.type !== "irrelevant") {
         const entry = addClassifiedItem({
           type: classified.type,
@@ -22,7 +23,22 @@ export default function transcriptRouter(io) {
           dueBy: classified.dueBy
         });
         io.emit("state_update", { type: classified.type, entry });
+
+        const criticalKeywords = ["outage", "down", "failing", "breach", "data loss", "critical", "urgent", "escalat"];
+        const textLower = text.toLowerCase();
+        const keywordMatch = criticalKeywords.some(k => textLower.includes(k));
+
+        if (classified.critical || keywordMatch) {
+          const suggestedAction = classified.suggestedAction || "Consider escalating this to the on-call engineer";
+          io.emit("action_proposed", {
+            description: suggestedAction,
+            proposedBy: "AI Commander",
+            id: Date.now(),
+            triggeredBy: classified.summary
+          });
+        }
       }
+
       res.json(classified);
     } catch (err) {
       console.error(err);
