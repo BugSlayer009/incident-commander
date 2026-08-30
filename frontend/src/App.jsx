@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   Clock,
   Mic,
+  MicOff,
   PhoneOff,
   MoreHorizontal,
   Filter,
@@ -27,6 +28,8 @@ import {
   ChevronRight,
   Share2,
 } from "lucide-react";
+import { joinChannel, leaveChannel } from "./agora";
+import { startSpeechRecognition, stopSpeechRecognition } from "./speechToText";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const socket = io(API_URL);
@@ -99,6 +102,12 @@ export default function SyntrixIncidentCommander() {
   });
   const [proposedAction, setProposedAction] = useState(null);
 
+  // Agora + speech recognition state
+  const [inRoom, setInRoom] = useState(false);
+  const [audioTrack, setAudioTrack] = useState(null);
+  const [recognition, setRecognition] = useState(null);
+  const [joining, setJoining] = useState(false);
+
   useEffect(() => {
     const i = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(i);
@@ -125,6 +134,39 @@ export default function SyntrixIncidentCommander() {
     });
   };
 
+  const handleJoinRoom = async () => {
+    if (joining || inRoom) return;
+    setJoining(true);
+    try {
+      const uid = Math.floor(Math.random() * 100000);
+      const track = await joinChannel("incident-room-1", uid);
+      setAudioTrack(track);
+
+      const rec = startSpeechRecognition("You", "Backend Eng", async (text, speaker, role) => {
+        try {
+          await axios.post(`${API}/transcript`, { text, speaker, role });
+        } catch (e) {
+          console.error("transcript post failed", e);
+        }
+      });
+      setRecognition(rec);
+      setInRoom(true);
+    } catch (err) {
+      console.error("failed to join room:", err);
+      alert("Could not join voice room — check console for details, and make sure mic permission is granted.");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleLeaveRoom = async () => {
+    await leaveChannel(audioTrack);
+    stopSpeechRecognition(recognition);
+    setAudioTrack(null);
+    setRecognition(null);
+    setInRoom(false);
+  };
+
   const hh = String(Math.floor(elapsed / 3600)).padStart(2, "0");
   const mm = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
@@ -133,7 +175,13 @@ export default function SyntrixIncidentCommander() {
   return (
     <div style={{ display: "flex", background: C.bg, minHeight: "100%", width: "100%", fontFamily: "'Inter', system-ui, sans-serif", color: C.ink }}>
       <GlobalStyle />
-      <Sidebar view={view} setView={setView} actionCount={incidentState.actions.filter(a => a.status !== "done").length} />
+      <Sidebar
+        view={view}
+        setView={setView}
+        actionCount={incidentState.actions.filter(a => a.status !== "done").length}
+        inRoom={inRoom}
+        onLeaveRoom={handleLeaveRoom}
+      />
       <main style={{ flex: 1, minWidth: 0, padding: "22px 26px 40px" }}>
         {view === "overview" && (
           <OverviewView
@@ -141,6 +189,10 @@ export default function SyntrixIncidentCommander() {
             state={incidentState}
             proposedAction={proposedAction}
             onConfirm={confirmAction}
+            inRoom={inRoom}
+            joining={joining}
+            onJoinRoom={handleJoinRoom}
+            onLeaveRoom={handleLeaveRoom}
           />
         )}
         {view === "timeline" && <TimelineView items={incidentState.timeline} />}
@@ -185,7 +237,7 @@ function GlobalStyle() {
 }
 
 /* ---------------------------- SIDEBAR ---------------------------- */
-function Sidebar({ view, setView, actionCount }) {
+function Sidebar({ view, setView, actionCount, inRoom, onLeaveRoom }) {
   return (
     <aside style={{ width: 232, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", padding: "20px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 8px", marginBottom: 26 }}>
@@ -244,7 +296,12 @@ function Sidebar({ view, setView, actionCount }) {
             </p>
           </div>
         </div>
-        <button className="btn-ghost" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.danger, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+        <button
+          className="btn-ghost"
+          onClick={onLeaveRoom}
+          disabled={!inRoom}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: inRoom ? C.danger : C.faint, fontSize: 13, fontWeight: 600, cursor: inRoom ? "pointer" : "default", fontFamily: "inherit" }}
+        >
           <PhoneOff size={14} /> Leave Room
         </button>
       </div>
@@ -309,7 +366,7 @@ function EmptyState({ text }) {
 }
 
 /* ---------------------------- OVERVIEW ---------------------------- */
-function OverviewView({ clock, state, proposedAction, onConfirm }) {
+function OverviewView({ clock, state, proposedAction, onConfirm, inRoom, joining, onJoinRoom, onLeaveRoom }) {
   const factsCount = state.facts.length;
   const hypothesesCount = state.hypotheses.length;
   const actionsCount = state.actions.length;
@@ -321,7 +378,7 @@ function OverviewView({ clock, state, proposedAction, onConfirm }) {
       <PageHeader
         title="Incident Commander"
         subtitle="AI co-pilot for real-time incident management"
-        live
+        live={inRoom}
         right={
           <button className="btn-ghost" style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.ink, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
             <Share2 size={14} /> Share Room
@@ -330,7 +387,7 @@ function OverviewView({ clock, state, proposedAction, onConfirm }) {
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
-        <StatCard icon={Radio} color={C.success} soft={C.successSoft} label="Room Status" value="Connected" />
+        <StatCard icon={Radio} color={inRoom ? C.success : C.slate} soft={inRoom ? C.successSoft : C.borderSoft} label="Room Status" value={inRoom ? "Connected" : "Not joined"} />
         <StatCard icon={Users} color={C.primary} soft={C.primarySoft} label="Participants" value={PARTICIPANTS.length} />
         <StatCard icon={AlertTriangle} color={C.danger} soft={C.dangerSoft} label="Open Conflicts" value={state.conflicts.length} />
         <StatCard icon={Clock} color={C.slate} soft={C.borderSoft} label="Elapsed Time" value={clock} mono />
@@ -341,22 +398,28 @@ function OverviewView({ clock, state, proposedAction, onConfirm }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div>
               <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Live Voice Room</p>
-              <span style={{ fontSize: 11.5, color: C.success }}>● Agora Voice Active</span>
+              <span style={{ fontSize: 11.5, color: inRoom ? C.success : C.faint }}>
+                {inRoom ? "● Agora Voice Active — listening to your mic" : "○ Not connected"}
+              </span>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 18 }}>
             {PARTICIPANTS.map((p) => (
               <div key={p.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <Avatar initial={p.name[0]} speaking={p.speaking} />
+                <Avatar initial={p.name[0]} speaking={p.speaking && inRoom} />
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{p.name}</span>
                 <span style={{ fontSize: 10, color: C.faint }}>{p.role}</span>
               </div>
             ))}
           </div>
-          <WaveBars />
+          <WaveBars active={inRoom} />
           <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 16 }}>
-            <RoundBtn icon={Mic} bg={C.borderSoft} color={C.ink} />
-            <RoundBtn icon={PhoneOff} bg={C.danger} color="#fff" />
+            {!inRoom ? (
+              <RoundBtn icon={Mic} bg={C.primary} color="#fff" onClick={onJoinRoom} disabled={joining} title={joining ? "Joining..." : "Join room"} />
+            ) : (
+              <RoundBtn icon={MicOff} bg={C.borderSoft} color={C.ink} onClick={onLeaveRoom} title="Mute / leave" />
+            )}
+            <RoundBtn icon={PhoneOff} bg={C.danger} color="#fff" onClick={onLeaveRoom} disabled={!inRoom} title="Leave room" />
             <RoundBtn icon={MoreHorizontal} bg={C.borderSoft} color={C.ink} />
           </div>
         </Card>
@@ -446,28 +509,35 @@ function MiniStat({ icon: Icon, color, soft, label, value }) {
   );
 }
 
-function RoundBtn({ icon: Icon, bg, color }) {
+function RoundBtn({ icon: Icon, bg, color, onClick, disabled, title }) {
   return (
-    <button className="btn-ghost" style={{ width: 42, height: 42, borderRadius: "50%", background: bg, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+    <button
+      className="btn-ghost"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{ width: 42, height: 42, borderRadius: "50%", background: bg, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}
+    >
       <Icon size={17} color={color} />
     </button>
   );
 }
 
-function WaveBars() {
+function WaveBars({ active = true }) {
   const bars = Array.from({ length: 28 });
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2.5, height: 30, justifyContent: "center" }}>
       {bars.map((_, i) => (
         <div
           key={i}
-          className="wave-bar"
+          className={active ? "wave-bar" : ""}
           style={{
             width: 3,
-            height: `${8 + (i % 5) * 5}px`,
+            height: active ? `${8 + (i % 5) * 5}px` : "4px",
             background: i % 3 === 0 ? C.primary : C.primarySoft,
             borderRadius: 2,
             animationDelay: `${(i % 7) * 0.09}s`,
+            opacity: active ? 1 : 0.4,
           }}
         />
       ))}
