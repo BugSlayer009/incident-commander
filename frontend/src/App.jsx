@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import io from "socket.io-client";
+import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Radio,
@@ -26,10 +28,12 @@ import {
   Share2,
 } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const socket = io(API_URL);
+const API = `${API_URL}/api`;
+
 /* ---------------------------------------------------------------
-   TOKENS — clean SaaS command-center, taken further than the ref:
-   soft neutral bg, single confident blue primary, muted semantic
-   accents per category, generous card radius + soft shadows.
+   TOKENS
 ----------------------------------------------------------------*/
 const C = {
   bg: "#F5F7FA",
@@ -54,7 +58,7 @@ const C = {
 const NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "timeline", label: "Timeline", icon: History },
-  { id: "actions", label: "Actions", icon: ListChecks, badge: 6 },
+  { id: "actions", label: "Actions", icon: ListChecks },
   { id: "assistant", label: "AI Assistant", icon: Bot },
   { id: "incidents", label: "Incidents", icon: AlertTriangle },
   { id: "integrations", label: "Integrations", icon: Plug },
@@ -71,16 +75,6 @@ const PARTICIPANTS = [
   { name: "Priya", role: "Duty Commander", speaking: false },
 ];
 
-const TIMELINE = [
-  { id: 1, time: "10:38 AM", type: "fact", title: "Payment Service error rate spiked to 15%", detail: "Detected by Monitoring Alert", by: "Monitoring Alert", full: "Error rate on the payment service crossed the 15% threshold, triggering an automated page. Correlated with a rise in gateway timeouts.", related: "Payment Service", status: "Confirmed" },
-  { id: 2, time: "10:39 AM", type: "decision", title: "Decided to roll back Payment Service", detail: "By Rohit", by: "Rohit", full: "Rohit proposed rolling back the payment service to the previous stable build while the connection issue is investigated.", related: "Payment Service", status: "Approved" },
-  { id: 3, time: "10:40 AM", type: "hypothesis", title: "Database connection pool exhausted", detail: "Identified by Karan", by: "Karan", full: "Too many open connections from Payment Service causing failures. Not yet confirmed against metrics.", related: "Payment Service", status: "Under investigation" },
-  { id: 4, time: "10:40 AM", type: "conflict", title: "Conflicting root-cause claims", detail: "Karan vs. Anita", by: "Assistant", full: "Karan attributes the failure to connection pool exhaustion; Anita's earlier report pointed to Redis latency. Flagged rather than resolved.", related: "Payment Service", status: "Unresolved" },
-  { id: 5, time: "10:41 AM", type: "action", title: "Action: Increase DB connection pool", detail: "Assigned to Rohit", by: "Rohit", full: "Rohit to raise the connection pool ceiling on the payments-db primary and monitor for recovery.", related: "Database", status: "In progress" },
-  { id: 6, time: "10:42 AM", type: "fact", title: "Redis latency high in us-east-1", detail: "Identified by Anita", by: "Anita", full: "P99 latency on the Redis cluster in us-east-1 rose to 800ms starting 10:36 AM.", related: "Redis Cache", status: "Confirmed" },
-  { id: 7, time: "10:43 AM", type: "decision", title: "Decision: Scale Redis nodes", detail: "By Priya", by: "Priya", full: "Priya authorized scaling the Redis cluster from 3 to 5 nodes to relieve latency pressure.", related: "Redis Cache", status: "Approved" },
-];
-
 const TYPE_META = {
   fact: { label: "Fact", color: C.primary, soft: C.primarySoft },
   decision: { label: "Decision", color: C.success, soft: C.successSoft },
@@ -88,15 +82,6 @@ const TYPE_META = {
   hypothesis: { label: "Hypothesis", color: C.warning, soft: C.warningSoft },
   conflict: { label: "Conflict", color: C.danger, soft: C.dangerSoft },
 };
-
-const ACTIONS = [
-  { id: "A-1", text: "Increase DB connection pool", owner: "Rohit", status: "In Progress" },
-  { id: "A-2", text: "Check Redis latency", owner: "Anita", status: "Open" },
-  { id: "A-3", text: "Verify payment queue", owner: "Karan", status: "Open" },
-  { id: "A-4", text: "Update status page", owner: "Priya", status: "Open" },
-  { id: "A-5", text: "Scale Redis nodes", owner: "Priya", status: "In Progress" },
-  { id: "A-6", text: "Notify business stakeholders", owner: "Anita", status: "Done" },
-];
 
 const CAPABILITIES = [
   { icon: MessageSquareText, title: "Real-time Transcription", desc: "Live speech-to-text" },
@@ -108,11 +93,38 @@ const CAPABILITIES = [
 
 export default function SyntrixIncidentCommander() {
   const [view, setView] = useState("overview");
-  const [elapsed, setElapsed] = useState(5077);
+  const [elapsed, setElapsed] = useState(0);
+  const [incidentState, setIncidentState] = useState({
+    facts: [], hypotheses: [], decisions: [], actions: [], conflicts: [], timeline: []
+  });
+  const [proposedAction, setProposedAction] = useState(null);
+
   useEffect(() => {
     const i = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(i);
   }, []);
+
+  useEffect(() => {
+    axios.get(`${API}/actions/state`).then(res => setIncidentState(res.data)).catch(() => {});
+
+    socket.on("state_update", () => {
+      axios.get(`${API}/actions/state`).then(res => setIncidentState(res.data)).catch(() => {});
+    });
+
+    socket.on("action_proposed", (data) => setProposedAction(data));
+    socket.on("action_executed", () => setProposedAction(null));
+
+    return () => socket.disconnect();
+  }, []);
+
+  const confirmAction = async () => {
+    if (!proposedAction) return;
+    await axios.post(`${API}/actions/confirm`, {
+      description: proposedAction.description,
+      confirmedBy: "Incident Commander"
+    });
+  };
+
   const hh = String(Math.floor(elapsed / 3600)).padStart(2, "0");
   const mm = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
@@ -121,12 +133,19 @@ export default function SyntrixIncidentCommander() {
   return (
     <div style={{ display: "flex", background: C.bg, minHeight: "100%", width: "100%", fontFamily: "'Inter', system-ui, sans-serif", color: C.ink }}>
       <GlobalStyle />
-      <Sidebar view={view} setView={setView} />
+      <Sidebar view={view} setView={setView} actionCount={incidentState.actions.filter(a => a.status !== "done").length} />
       <main style={{ flex: 1, minWidth: 0, padding: "22px 26px 40px" }}>
-        {view === "overview" && <OverviewView clock={clock} />}
-        {view === "timeline" && <TimelineView />}
-        {view === "actions" && <ActionsView />}
-        {view === "assistant" && <AssistantView />}
+        {view === "overview" && (
+          <OverviewView
+            clock={clock}
+            state={incidentState}
+            proposedAction={proposedAction}
+            onConfirm={confirmAction}
+          />
+        )}
+        {view === "timeline" && <TimelineView items={incidentState.timeline} />}
+        {view === "actions" && <ActionsView items={incidentState.actions} />}
+        {view === "assistant" && <AssistantView state={incidentState} />}
         {["incidents", "integrations", "reports", "settings"].includes(view) && <Placeholder label={NAV.find((n) => n.id === view).label} />}
       </main>
     </div>
@@ -166,7 +185,7 @@ function GlobalStyle() {
 }
 
 /* ---------------------------- SIDEBAR ---------------------------- */
-function Sidebar({ view, setView }) {
+function Sidebar({ view, setView, actionCount }) {
   return (
     <aside style={{ width: 232, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", padding: "20px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 8px", marginBottom: 26 }}>
@@ -179,6 +198,7 @@ function Sidebar({ view, setView }) {
       <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {NAV.map((item) => {
           const active = view === item.id;
+          const badge = item.id === "actions" && actionCount > 0 ? actionCount : null;
           return (
             <button
               key={item.id}
@@ -202,9 +222,9 @@ function Sidebar({ view, setView }) {
             >
               <item.icon size={16} strokeWidth={2} />
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && (
+              {badge && (
                 <span className="mono" style={{ fontSize: 10.5, background: C.danger, color: "#fff", borderRadius: 999, padding: "1px 6px" }}>
-                  {item.badge}
+                  {badge}
                 </span>
               )}
             </button>
@@ -284,9 +304,17 @@ function Placeholder({ label }) {
   );
 }
 
+function EmptyState({ text }) {
+  return <p style={{ padding: 20, color: C.faint, fontSize: 13, textAlign: "center" }}>{text}</p>;
+}
+
 /* ---------------------------- OVERVIEW ---------------------------- */
-function OverviewView({ clock }) {
-  const [suggestion, setSuggestion] = useState("pending"); // pending | discussed | confirmed
+function OverviewView({ clock, state, proposedAction, onConfirm }) {
+  const factsCount = state.facts.length;
+  const hypothesesCount = state.hypotheses.length;
+  const actionsCount = state.actions.length;
+  const openActions = state.actions.filter((a) => a.status !== "done");
+  const latest = state.timeline[state.timeline.length - 1];
 
   return (
     <div className="fade-in">
@@ -301,16 +329,14 @@ function OverviewView({ clock }) {
         }
       />
 
-      {/* STAT ROW */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
         <StatCard icon={Radio} color={C.success} soft={C.successSoft} label="Room Status" value="Connected" />
-        <StatCard icon={Users} color={C.primary} soft={C.primarySoft} label="Participants" value="12" />
-        <StatCard icon={AlertTriangle} color={C.danger} soft={C.dangerSoft} label="Incident Severity" value="High" />
+        <StatCard icon={Users} color={C.primary} soft={C.primarySoft} label="Participants" value={PARTICIPANTS.length} />
+        <StatCard icon={AlertTriangle} color={C.danger} soft={C.dangerSoft} label="Open Conflicts" value={state.conflicts.length} />
         <StatCard icon={Clock} color={C.slate} soft={C.borderSoft} label="Elapsed Time" value={clock} mono />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr 0.95fr", gap: 16, alignItems: "start" }}>
-        {/* LIVE VOICE ROOM */}
         <Card style={{ padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div>
@@ -335,7 +361,6 @@ function OverviewView({ clock }) {
           </div>
         </Card>
 
-        {/* INCIDENT SUMMARY */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Card style={{ padding: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -343,64 +368,54 @@ function OverviewView({ clock }) {
               <span style={{ fontSize: 10.5, color: C.faint }}>Auto-updated</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-              <MiniStat icon={FileText} color={C.primary} soft={C.primarySoft} label="Facts" value={14} />
-              <MiniStat icon={Sparkles} color={C.warning} soft={C.warningSoft} label="Hypotheses" value={5} />
-              <MiniStat icon={ListChecks} color={C.purple} soft={C.purpleSoft} label="Action Items" value={6} />
+              <MiniStat icon={FileText} color={C.primary} soft={C.primarySoft} label="Facts" value={factsCount} />
+              <MiniStat icon={Sparkles} color={C.warning} soft={C.warningSoft} label="Hypotheses" value={hypothesesCount} />
+              <MiniStat icon={ListChecks} color={C.purple} soft={C.purpleSoft} label="Action Items" value={actionsCount} />
             </div>
             <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <p style={{ fontSize: 12.5, fontWeight: 600, margin: 0 }}>Latest Update</p>
-                <span className="mono" style={{ fontSize: 10.5, color: C.faint }}>10:42 AM</span>
+                {latest && <span className="mono" style={{ fontSize: 10.5, color: C.faint }}>{new Date(latest.timestamp).toLocaleTimeString()}</span>}
               </div>
               <p style={{ fontSize: 12.5, color: C.slate, margin: "4px 0 0", lineHeight: 1.5 }}>
-                Database connection pool exhausted on Payment Service. Identified by <span style={{ color: C.primary, fontWeight: 600 }}>Rohit</span>.
+                {latest ? latest.text : "Waiting for the first update from the room…"}
               </p>
             </div>
           </Card>
 
-          {/* SIGNATURE: AI SUGGESTION / HUMAN CONFIRM */}
           <Card style={{ padding: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>AI Suggestion</p>
-              <span className="mono" style={{ fontSize: 10.5, color: C.faint }}>10:42 AM</span>
             </div>
-            <p style={{ fontSize: 12.5, color: C.slate, margin: "0 0 14px", lineHeight: 1.5 }}>
-              Consider increasing connection pool size or restarting the service.
-            </p>
-            {suggestion === "pending" && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn-ghost" onClick={() => setSuggestion("discussed")} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.ink, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Discuss</button>
-                <button className="btn-primary" onClick={() => setSuggestion("confirmed")} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Confirm</button>
-              </div>
-            )}
-            {suggestion === "confirmed" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.success, fontSize: 12.5, fontWeight: 600 }}>
-                <CheckCircle2 size={14} /> Confirmed — action queued to Slack
-              </div>
-            )}
-            {suggestion === "discussed" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.warning, fontSize: 12.5, fontWeight: 600 }}>
-                <MessageSquareText size={14} /> Marked for discussion — no action taken
-              </div>
+            {proposedAction ? (
+              <>
+                <p style={{ fontSize: 12.5, color: C.slate, margin: "0 0 14px", lineHeight: 1.5 }}>
+                  {proposedAction.description}
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn-primary" onClick={onConfirm} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Confirm</button>
+                </div>
+              </>
+            ) : (
+              <p style={{ fontSize: 12.5, color: C.faint, margin: 0, lineHeight: 1.5 }}>No pending suggestions right now.</p>
             )}
           </Card>
         </div>
 
-        {/* ACTIVE ACTION ITEMS */}
         <Card style={{ padding: 20 }}>
           <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px" }}>Active Action Items</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
-            {ACTIONS.filter((a) => a.status !== "Done").map((a) => (
+            {openActions.length === 0 && <EmptyState text="No open action items yet" />}
+            {openActions.map((a) => (
               <div key={a.id}>
                 <p style={{ fontSize: 12.5, fontWeight: 600, margin: 0 }}>{a.text}</p>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
-                  <span style={{ fontSize: 11.5, color: C.faint }}>Assigned to {a.owner}</span>
-                  <Badge color={a.status === "In Progress" ? C.warning : C.slate} soft={a.status === "In Progress" ? C.warningSoft : C.borderSoft}>{a.status}</Badge>
+                  <span style={{ fontSize: 11.5, color: C.faint }}>{a.owner ? `Assigned to ${a.owner}` : "Unassigned"}</span>
+                  <Badge color={a.status === "in_progress" ? C.warning : C.slate} soft={a.status === "in_progress" ? C.warningSoft : C.borderSoft}>{a.status || "open"}</Badge>
                 </div>
               </div>
             ))}
           </div>
-          <button className="btn-primary" style={{ width: "100%", marginTop: 14, padding: "9px 0", borderRadius: 8, border: "none", background: C.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>View All</button>
         </Card>
       </div>
     </div>
@@ -461,8 +476,13 @@ function WaveBars() {
 }
 
 /* ---------------------------- TIMELINE ---------------------------- */
-function TimelineView() {
-  const [selected, setSelected] = useState(TIMELINE[2]);
+function TimelineView({ items }) {
+  const [selected, setSelected] = useState(items[0] || null);
+
+  useEffect(() => {
+    if (!selected && items.length > 0) setSelected(items[0]);
+  }, [items, selected]);
+
   return (
     <div className="fade-in">
       <PageHeader
@@ -483,12 +503,13 @@ function TimelineView() {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, alignItems: "start" }}>
         <Card style={{ padding: "6px 10px" }}>
-          {TIMELINE.map((item, idx) => {
-            const meta = TYPE_META[item.type];
-            const active = selected.id === item.id;
+          {items.length === 0 && <EmptyState text="Nothing on the timeline yet — waiting on the room" />}
+          {items.map((item, idx) => {
+            const meta = TYPE_META[item.type] || TYPE_META.fact;
+            const active = selected && selected.id === item.id;
             return (
               <button
-                key={item.id}
+                key={item.id || idx}
                 className="timeline-row"
                 onClick={() => setSelected(item)}
                 style={{
@@ -497,7 +518,7 @@ function TimelineView() {
                   width: "100%",
                   textAlign: "left",
                   padding: "14px 10px",
-                  borderBottom: idx < TIMELINE.length - 1 ? `1px solid ${C.borderSoft}` : "none",
+                  borderBottom: idx < items.length - 1 ? `1px solid ${C.borderSoft}` : "none",
                   background: active ? C.primarySoft : "transparent",
                   border: "none",
                   cursor: "pointer",
@@ -507,12 +528,12 @@ function TimelineView() {
               >
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 3 }}>
                   <span style={{ width: 9, height: 9, borderRadius: "50%", background: meta.color, flexShrink: 0 }} />
-                  {idx < TIMELINE.length - 1 && <span style={{ width: 1, flex: 1, background: C.borderSoft, marginTop: 4 }} />}
+                  {idx < items.length - 1 && <span style={{ width: 1, flex: 1, background: C.borderSoft, marginTop: 4 }} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p className="mono" style={{ fontSize: 10.5, color: C.faint, margin: "0 0 3px" }}>{item.time}</p>
-                  <p style={{ fontSize: 13.5, fontWeight: 600, margin: 0, color: C.ink }}>{item.title}</p>
-                  <p style={{ fontSize: 11.5, color: C.slate, margin: "2px 0 0" }}>{item.detail}</p>
+                  <p className="mono" style={{ fontSize: 10.5, color: C.faint, margin: "0 0 3px" }}>{new Date(item.timestamp).toLocaleTimeString()}</p>
+                  <p style={{ fontSize: 13.5, fontWeight: 600, margin: 0, color: C.ink }}>{item.text}</p>
+                  <p style={{ fontSize: 11.5, color: C.slate, margin: "2px 0 0" }}>{item.speaker}</p>
                 </div>
                 <ChevronRight size={15} color={C.faint} style={{ alignSelf: "center", flexShrink: 0 }} />
               </button>
@@ -520,32 +541,28 @@ function TimelineView() {
           })}
         </Card>
 
-        <Card style={{ padding: 20, position: "sticky", top: 20 }}>
-          <Badge color={TYPE_META[selected.type].color} soft={TYPE_META[selected.type].soft}>{TYPE_META[selected.type].label}</Badge>
-          <p className="display" style={{ fontSize: 16, fontWeight: 700, margin: "10px 0 4px" }}>{selected.title}</p>
-          <p className="mono" style={{ fontSize: 11, color: C.faint, margin: "0 0 14px" }}>{selected.time} · {selected.by}</p>
-          <p style={{ fontSize: 12.5, color: C.slate, lineHeight: 1.6, margin: "0 0 18px" }}>{selected.full}</p>
-          <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <p style={{ fontSize: 11, color: C.faint, margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Related to</p>
-              <Badge color={C.primary} soft={C.primarySoft}>{selected.related}</Badge>
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: C.faint, margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</p>
-              <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: C.ink }}>{selected.status}</p>
-            </div>
-          </div>
-        </Card>
+        {selected && (
+          <Card style={{ padding: 20, position: "sticky", top: 20 }}>
+            <Badge color={(TYPE_META[selected.type] || TYPE_META.fact).color} soft={(TYPE_META[selected.type] || TYPE_META.fact).soft}>
+              {(TYPE_META[selected.type] || TYPE_META.fact).label}
+            </Badge>
+            <p className="display" style={{ fontSize: 16, fontWeight: 700, margin: "10px 0 4px" }}>{selected.text}</p>
+            <p className="mono" style={{ fontSize: 11, color: C.faint, margin: "0 0 14px" }}>
+              {new Date(selected.timestamp).toLocaleTimeString()} · {selected.speaker}
+            </p>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
 /* ---------------------------- ACTIONS ---------------------------- */
-function ActionsView() {
+function ActionsView({ items }) {
   const [filter, setFilter] = useState("All");
-  const filters = ["All", "Open", "In Progress", "Done"];
-  const rows = ACTIONS.filter((a) => filter === "All" || a.status === filter);
+  const filters = ["All", "open", "in_progress", "done"];
+  const rows = items.filter((a) => filter === "All" || a.status === filter);
+
   return (
     <div className="fade-in">
       <PageHeader title="Action Items" subtitle="Never miss a follow-up or a dropped owner." />
@@ -572,31 +589,31 @@ function ActionsView() {
         ))}
       </div>
       <Card style={{ padding: "6px 10px" }}>
+        {rows.length === 0 && <EmptyState text="No action items in this filter" />}
         {rows.map((a, idx) => (
-          <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 10px", borderBottom: idx < rows.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+          <div key={a.id || idx} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 10px", borderBottom: idx < rows.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 700, color: C.primary, flexShrink: 0 }}>
-              {a.owner[0]}
+              {a.owner ? a.owner[0] : "?"}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: 13.5, fontWeight: 600, margin: 0 }}>{a.text}</p>
-              <span style={{ fontSize: 11.5, color: C.faint }}>Assigned to {a.owner}</span>
+              <span style={{ fontSize: 11.5, color: C.faint }}>{a.owner ? `Assigned to ${a.owner}` : "Unassigned"}</span>
             </div>
             <Badge
-              color={a.status === "Done" ? C.success : a.status === "In Progress" ? C.warning : C.slate}
-              soft={a.status === "Done" ? C.successSoft : a.status === "In Progress" ? C.warningSoft : C.borderSoft}
+              color={a.status === "done" ? C.success : a.status === "in_progress" ? C.warning : C.slate}
+              soft={a.status === "done" ? C.successSoft : a.status === "in_progress" ? C.warningSoft : C.borderSoft}
             >
-              {a.status}
+              {a.status || "open"}
             </Badge>
           </div>
         ))}
-        {rows.length === 0 && <p style={{ padding: 20, color: C.faint, fontSize: 13 }}>Nothing here.</p>}
       </Card>
     </div>
   );
 }
 
 /* ---------------------------- AI ASSISTANT ---------------------------- */
-function AssistantView() {
+function AssistantView({ state }) {
   const [messages, setMessages] = useState([
     { from: "ai", text: "I'm listening to the room and organizing everything. Here's what I have so far." },
   ]);
@@ -647,10 +664,10 @@ function AssistantView() {
           <div style={{ background: C.borderSoft, borderRadius: 10, padding: 14, marginTop: 16 }}>
             <p style={{ fontSize: 11.5, fontWeight: 700, margin: "0 0 10px", color: C.slate, textTransform: "uppercase", letterSpacing: "0.04em" }}>Current Incident Snapshot</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-              <SnapshotStat icon={FileText} color={C.primary} label="Facts" value={14} />
-              <SnapshotStat icon={CheckCircle2} color={C.success} label="Decisions" value={7} />
-              <SnapshotStat icon={ListChecks} color={C.purple} label="Action Items" value={6} />
-              <SnapshotStat icon={AlertTriangle} color={C.danger} label="Open Risks" value={3} />
+              <SnapshotStat icon={FileText} color={C.primary} label="Facts" value={state.facts.length} />
+              <SnapshotStat icon={CheckCircle2} color={C.success} label="Decisions" value={state.decisions.length} />
+              <SnapshotStat icon={ListChecks} color={C.purple} label="Action Items" value={state.actions.length} />
+              <SnapshotStat icon={AlertTriangle} color={C.danger} label="Open Risks" value={state.conflicts.length} />
             </div>
           </div>
 

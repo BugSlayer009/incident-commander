@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1"
+});
 
 const SYSTEM_PROMPT = `You are an incident classification engine. Given a single transcript chunk from a live incident call, classify it into exactly one of: "fact", "hypothesis", "decision", "action", "conflict", "irrelevant".
 
@@ -16,7 +19,7 @@ Respond ONLY with JSON: { "type": "...", "summary": "short rewritten version", "
 
 export async function classifyChunk(text, speaker, role) {
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "openai/gpt-oss-20b",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: `Speaker: ${speaker} (${role})\nText: "${text}"` }
