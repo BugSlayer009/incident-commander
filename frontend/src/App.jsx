@@ -71,7 +71,7 @@ function generateMeetingCode() {
 export default function SyntrixIncidentCommander() {
   const [screen, setScreen] = useState("landing"); // landing | app
   const [meetingCode, setMeetingCode] = useState(null);
-
+  const [proposedAction, setProposedAction] = useState(null);
   const [view, setView] = useState("overview");
   const [elapsed, setElapsed] = useState(0);
   const [incidentState, setIncidentState] = useState({
@@ -89,15 +89,23 @@ export default function SyntrixIncidentCommander() {
     return () => clearInterval(i);
   }, []);
 
-  useEffect(() => {
+ useEffect(() => {
     if (screen !== "app") return;
     axios.get(`${API}/actions/state`).then(res => setIncidentState(res.data)).catch(() => {});
+
     socket.on("state_update", () => {
       axios.get(`${API}/actions/state`).then(res => setIncidentState(res.data)).catch(() => {});
     });
-    return () => socket.off("state_update");
-  }, [screen]);
 
+    socket.on("action_proposed", (data) => setProposedAction(data));
+    socket.on("action_executed", () => setProposedAction(null));
+
+    return () => {
+      socket.off("state_update");
+      socket.off("action_proposed");
+      socket.off("action_executed");
+    };
+  }, [screen]);
   const handleEnterApp = async (code) => {
     setMeetingCode(code);
     setScreen("app");
@@ -153,14 +161,22 @@ export default function SyntrixIncidentCommander() {
       <main style={{ flex: 1, minWidth: 0, padding: "22px 26px 40px" }}>
         {view === "overview" && (
           <OverviewView
-            state={incidentState}
-            inRoom={inRoom}
-            joining={joining}
-            micMuted={micMuted}
-            onToggleMic={toggleMic}
-            onLeaveRoom={handleLeaveRoom}
-            onOpenSettings={() => setShowSettings(true)}
-          />
+  state={incidentState}
+  inRoom={inRoom}
+  joining={joining}
+  micMuted={micMuted}
+  onToggleMic={toggleMic}
+  onLeaveRoom={handleLeaveRoom}
+  onOpenSettings={() => setShowSettings(true)}
+  proposedAction={proposedAction}
+  onConfirmAction={async () => {
+    await axios.post(`${API}/actions/confirm`, {
+      description: proposedAction.description,
+      confirmedBy: "Incident Commander"
+    });
+    setProposedAction(null);
+  }}
+/>
         )}
         {view === "timeline" && <TimelineView items={incidentState.timeline} />}
       </main>
@@ -459,6 +475,19 @@ function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRo
           </div>
         }
       />
+
+{proposedAction && (
+  <div style={{ background: C.dangerSoft, border: `1px solid ${C.danger}33`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div>
+      <p style={{ fontSize: 12, fontWeight: 700, color: C.danger, margin: 0, textTransform: "uppercase", letterSpacing: "0.03em" }}>Critical — Action Proposed</p>
+      <p style={{ fontSize: 13.5, fontWeight: 600, margin: "2px 0 0", color: C.ink }}>{proposedAction.description}</p>
+    </div>
+    <button className="btn-primary" onClick={onConfirmAction} style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: C.danger, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+      Confirm
+    </button>
+  </div>
+)}
+
       <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 0.85fr", gap: 16, alignItems: "start" }}>
 
         <Card style={{ padding: 20, height: 560, display: "flex", flexDirection: "column" }}>
