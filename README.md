@@ -23,7 +23,7 @@ Incidents aren't slow because people don't know what to do. They're slow because
 
 ## 💡 The Idea
 
-SYNTRIX joins the incident call as a real participant over **Agora's real-time voice infrastructure**. It listens continuously, and instead of just transcribing, it actively **organizes the chaos**:
+SYNTRIX joins the incident call as a real participant over **Agora's real-time voice infrastructure**. Anyone can create a room and get a shareable 6-digit code, or join an existing one with a code — no accounts, no setup friction. Once inside, it listens continuously, and instead of just transcribing, it actively **organizes the chaos**:
 
 | It hears... | It does... |
 |---|---|
@@ -42,6 +42,8 @@ It never claims to know the root cause. It just makes sure the humans never lose
 
 ```mermaid
 flowchart TD
+    ENTRY["🚪 Join / Create Meeting<br/>6-digit room code"] --> ROOM
+
     subgraph ROOM["🎙️ Live Incident Room — Agora RTC"]
         U1["👤 Engineer"]
         U2["👤 Support Lead"]
@@ -70,8 +72,9 @@ flowchart TD
     CONFIRM -->|❌ no| DISCARD["discarded — no action taken"]
 
     FACTS & HYPO & DEC & ACT & CONF --> STATE["🗄️ Live Incident State<br/>in-memory store"]
-    STATE -->|"socket.io push"| DASH["📊 React Dashboard<br/>Timeline · Actions · AI Assistant"]
+    STATE -->|"socket.io push"| DASH["📊 React Dashboard<br/>Live Transcript · Timeline"]
 
+    style ENTRY fill:#171B2B,stroke:#7C5CFC,stroke-width:2px,color:#fff
     style ROOM fill:#EBF0FE,stroke:#3B66E0,stroke-width:2px
     style CLASSIFY fill:#F1EEFE,stroke:#7C5CFC,stroke-width:2px
     style PROPOSE fill:#FBEAEA,stroke:#D14343,stroke-width:2px
@@ -111,7 +114,12 @@ sequenceDiagram
 ## 🧩 What Each Layer Actually Does
 
 <table>
-<tr><td width="30%"><b>🎙️ Voice Layer</b></td><td>
+<tr><td width="30%"><b>🚪 Entry Layer</b></td><td>
+
+A glass-styled **join / create meeting** screen — create a room and get a shareable 6-digit code, or join an existing one with a code, before entering the live dashboard.
+
+</td></tr>
+<tr><td><b>🎙️ Voice Layer</b></td><td>
 
 **Agora RTC** — every participant joins a real voice channel over Agora's infrastructure, with per-user tracks so the system always knows *who* is speaking, not just *what* was said.
 
@@ -133,7 +141,7 @@ A strict **propose → human-confirm → execute** state machine. Nothing touche
 </td></tr>
 <tr><td><b>📊 Dashboard Layer</b></td><td>
 
-A React command-center that every responder can watch live — Overview, Timeline, Action Items, and an AI Assistant panel — all updating over Socket.io the instant something new is classified.
+A React command-center that every responder can watch live — a color-coded, real-time transcript feed, an animated voice orb showing SYNTRIX actively listening, and a full incident Timeline — all updating over Socket.io the instant something new is classified.
 
 </td></tr>
 </table>
@@ -146,13 +154,14 @@ Being upfront about hackathon-scope tradeoffs, because a working honest prototyp
 
 | Component | Status |
 |---|---|
-| Agora real-time voice room | ✅ Fully live |
+| Agora real-time voice room, joinable via shareable code | ✅ Fully live |
 | LLM classification (facts/hypotheses/decisions/actions/conflicts) | ✅ Fully live |
 | Live dashboard with Socket.io | ✅ Fully live |
 | Human-confirm-before-action guardrail | ✅ Fully live |
 | Slack integration | ✅ Fully live |
 | Auto-proposal on detected severity | ✅ Fully live |
 | Speech-to-text | ⚠️ Browser-native STT (not yet Agora's native Conversational AI STT engine) |
+| **Agora Conversational AI Engine (native ASR→LLM→TTS)** | ✅ **Separately validated** via Agora's official Next.js quickstart — confirms direct engagement with Agora's managed voice AI pipeline, not just RTC transport |
 | Jira / PagerDuty integration | 🔜 Stubbed — same architecture, swap the webhook |
 | Multi-speaker simultaneous transcription | 🔜 Currently one active mic per client tab |
 
@@ -210,177 +219,5 @@ You'll need free keys from:
 <div align="center">
 
 **SYNTRIX doesn't try to solve your incident. It makes sure your team never loses track of it.**
-
-</div>
-<div align="center">
-🛡️ SYNTRIX — Voice AI Incident Commander
-
-An AI that joins your incident call, listens, thinks, and keeps everyone aligned — without ever pretending to know the root cause.
-
-Built for EchoSphere: Agora Conversational AI Hackathon 2026
-
-Agora Node React Live Demo
-
-</div>
-🎯 The Problem
-
-A payment system goes down at 2 AM. Engineers, support teams, and business leaders pile into a call. Everyone's talking at once — some sharing facts, some guessing, some deciding. Ten minutes in, nobody agrees on what's confirmed, what's assumed, who owns what, or what's already been tried.
-
-Incidents aren't slow because people don't know what to do. They're slow because nobody is tracking what everyone just said.
-
-💡 The Idea
-
-SYNTRIX joins the incident call as a real participant over Agora's real-time voice infrastructure. Anyone can create a room and share a 6-digit code, or join an existing one — just like joining a call. Once inside, SYNTRIX listens continuously, and instead of just transcribing, it actively organizes the chaos:
-
-It hears...	It does...
-"the payment API is returning 500s"	Logs it as a Fact
-"I think it's the connection pool"	Logs it as a Hypothesis
-"let's roll back the deployment"	Logs it as a Decision
-"Rohit, can you check the DB pool"	Creates a tracked Action Item
-Two people contradicting each other	Raises a Conflict Flag — never picks a side
-Something sounds critical	Proposes an action — but only fires a real Slack alert once a human confirms
-
-It never claims to know the root cause. It just makes sure the humans never lose the thread.
-
-🏗️ System Architecture
-🎙️ Live Incident Room — Agora RTC
-joins voice channel
-joins voice channel
-joins voice channel
-mic audio
-raw transcript chunk+ speaker + role
-structured JSON
-fact
-hypothesis
-decision
-action
-conflict
-critical? + keyword scan
-yes
-✅ yes
-❌ no
-socket.io push
-🚪 Join / Create Meeting6-digit room code
-👤 Engineer
-👤 Support Lead
-👤 Duty Commander
-Agora RTC Enginereal-time audio transport
-🗣️ Speech-to-Textlive transcription
-⚙️ Express Backend/api/transcript
-🧠 LLM ClassificationEngineGroq · Llama-based
-Type?
-📘 Fact Table
-💭 Hypotheses
-✅ Decisions
-📋 Action Tracker
-⚠️ Conflict Log
-Severity Check
-🚨 AI proposes an action
-Human Confirms?
-📣 Slack Webhookreal action fires
-discarded — no actiontaken
-🗄️ Live Incident State
-📊 SYNTRIX DashboardLive Transcript · Timeline
-🔄 The Human-in-the-Loop Guardrail
-
-The one rule this whole system is built around: the AI never acts alone on anything critical.
-
-📣 Slack
-🧑‍💼 Duty Commander
-📊 Dashboard
-🧠 SYNTRIX AI
-🎙️ Incident Room
-📣 Slack
-🧑‍💼 Duty Commander
-📊 Dashboard
-🧠 SYNTRIX AI
-🎙️ Incident Room
-If the human ignores or rejects it,
-nothing happens. Ever.
-"we have a full payment outage"
-classify → fact + critical:true
-push live update (Live Transcript)
-propose action → "Page on-call engineer"
-shows pending suggestion, waits
-clicks Confirm
-fires webhook — real message posted
-🚨 team notified instantly
-🧩 What Each Layer Actually Does
-<table> <tr><td width="30%"><b>🚪 Entry Layer</b></td><td>
-
-A glass-styled join / create meeting screen — create a room and get a shareable 6-digit code, or join an existing one with a code. No accounts, no setup friction.
-
-</td></tr> <tr><td><b>🎙️ Voice Layer</b></td><td>
-
-Agora RTC — every participant joins a real voice channel scoped to their room code, with per-user tracks so the system always knows who is speaking, not just what was said.
-
-</td></tr> <tr><td><b>🧠 Intelligence Layer</b></td><td>
-
-Every transcript chunk is sent to an LLM with a strict instruction: classify, don't narrate. It returns structured JSON — type, summary, owner, due date, and a severity flag — never free-form prose.
-
-</td></tr> <tr><td><b>🗄️ State Layer</b></td><td>
-
-A live, continuously-updated incident record — facts, hypotheses, decisions, actions, conflicts, and a full timeline.
-
-</td></tr> <tr><td><b>🚦 Action Layer</b></td><td>
-
-A strict propose → human-confirm → execute state machine. Nothing touches the outside world (Slack, tickets, pages) without a person explicitly saying yes.
-
-</td></tr> <tr><td><b>📊 Dashboard Layer</b></td><td>
-
-A live command-center — a color-coded, real-time transcript feed on the left, an animated voice orb in the center showing SYNTRIX actively listening, and incident stats + open conflicts on the right. Updates instantly over Socket.io.
-
-</td></tr> </table>
-✅ What's Real vs. What's Scoped Down
-
-Being upfront about hackathon-scope tradeoffs, because a working honest prototype beats a fake polished one:
-
-Component	Status
-Agora real-time voice room, joinable via shareable code	✅ Fully live
-LLM classification (facts/hypotheses/decisions/actions/conflicts)	✅ Fully live
-Live dashboard with Socket.io	✅ Fully live
-Human-confirm-before-action guardrail	✅ Fully live
-Slack integration	✅ Fully live
-Auto-proposal on detected severity	✅ Fully live
-Speech-to-text	⚠️ Browser-native STT in the production app
-Agora Conversational AI Engine (native ASR→LLM→TTS)	✅ Separately validated via Agora's official Next.js quickstart — confirms direct engagement with Agora's managed voice AI pipeline, not just RTC transport
-Jira / PagerDuty integration	🔜 Stubbed — same architecture, swap the webhook
-🛠️ Tech Stack
-Voice          → Agora RTC (agora-rtc-sdk-ng)
-Speech-to-Text → Web Speech API (browser-native)
-AI Reasoning   → Groq (OpenAI-compatible, Llama-based)
-Backend        → Node.js + Express + Socket.io
-Frontend       → React + Vite
-Integrations   → Slack Incoming Webhooks
-Hosting        → Render (backend) · Vercel (frontend)
-🚀 Running It Yourself
-bash
-# clone
-git clone https://github.com/shivamshukla02/incident-commander.git
-cd incident-commander
-
-# backend
-cd backend
-npm install
-cp .env.example .env   # fill in your real keys
-npm run dev
-
-# frontend (new terminal)
-cd frontend
-npm install
-npm run dev
-
-You'll need free keys from:
-
-console.agora.io — App ID + Certificate
-console.groq.com — free-tier LLM access
-api.slack.com/apps — Incoming Webhook URL
-👥 Team SYNTRIX
-Name	Role
-Shivam Shukla	Backend & Systems
-Arpit Singh Baghel	—
-<div align="center">
-
-SYNTRIX doesn't try to solve your incident. It makes sure your team never loses track of it.
 
 </div>
