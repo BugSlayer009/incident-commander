@@ -23,7 +23,7 @@ Incidents aren't slow because people don't know what to do. They're slow because
 
 ## 💡 The Idea
 
-SYNTRIX joins the incident call as a real participant over **Agora's real-time voice infrastructure**. It listens continuously, and instead of just transcribing, it actively **organizes the chaos**:
+SYNTRIX joins the incident call as a real participant over **Agora's real-time voice infrastructure**. Anyone can create a room and get a shareable 6-digit code, or join an existing one with a code — no accounts, no setup friction. Once inside, it listens continuously, and instead of just transcribing, it actively **organizes the chaos**:
 
 | It hears... | It does... |
 |---|---|
@@ -42,6 +42,8 @@ It never claims to know the root cause. It just makes sure the humans never lose
 
 ```mermaid
 flowchart TD
+    ENTRY["🚪 Join / Create Meeting<br/>6-digit room code"] --> ROOM
+
     subgraph ROOM["🎙️ Live Incident Room — Agora RTC"]
         U1["👤 Engineer"]
         U2["👤 Support Lead"]
@@ -70,8 +72,9 @@ flowchart TD
     CONFIRM -->|❌ no| DISCARD["discarded — no action taken"]
 
     FACTS & HYPO & DEC & ACT & CONF --> STATE["🗄️ Live Incident State<br/>in-memory store"]
-    STATE -->|"socket.io push"| DASH["📊 React Dashboard<br/>Timeline · Actions · AI Assistant"]
+    STATE -->|"socket.io push"| DASH["📊 React Dashboard<br/>Live Transcript · Timeline"]
 
+    style ENTRY fill:#171B2B,stroke:#7C5CFC,stroke-width:2px,color:#fff
     style ROOM fill:#EBF0FE,stroke:#3B66E0,stroke-width:2px
     style CLASSIFY fill:#F1EEFE,stroke:#7C5CFC,stroke-width:2px
     style PROPOSE fill:#FBEAEA,stroke:#D14343,stroke-width:2px
@@ -111,7 +114,12 @@ sequenceDiagram
 ## 🧩 What Each Layer Actually Does
 
 <table>
-<tr><td width="30%"><b>🎙️ Voice Layer</b></td><td>
+<tr><td width="30%"><b>🚪 Entry Layer</b></td><td>
+
+A glass-styled **join / create meeting** screen — create a room and get a shareable 6-digit code, or join an existing one with a code, before entering the live dashboard.
+
+</td></tr>
+<tr><td><b>🎙️ Voice Layer</b></td><td>
 
 **Agora RTC** — every participant joins a real voice channel over Agora's infrastructure, with per-user tracks so the system always knows *who* is speaking, not just *what* was said.
 
@@ -133,7 +141,7 @@ A strict **propose → human-confirm → execute** state machine. Nothing touche
 </td></tr>
 <tr><td><b>📊 Dashboard Layer</b></td><td>
 
-A React command-center that every responder can watch live — Overview, Timeline, Action Items, and an AI Assistant panel — all updating over Socket.io the instant something new is classified.
+A React command-center that every responder can watch live — a color-coded, real-time transcript feed, an animated voice orb showing SYNTRIX actively listening, and a full incident Timeline — all updating over Socket.io the instant something new is classified.
 
 </td></tr>
 </table>
@@ -146,13 +154,14 @@ Being upfront about hackathon-scope tradeoffs, because a working honest prototyp
 
 | Component | Status |
 |---|---|
-| Agora real-time voice room | ✅ Fully live |
+| Agora real-time voice room, joinable via shareable code | ✅ Fully live |
 | LLM classification (facts/hypotheses/decisions/actions/conflicts) | ✅ Fully live |
 | Live dashboard with Socket.io | ✅ Fully live |
 | Human-confirm-before-action guardrail | ✅ Fully live |
 | Slack integration | ✅ Fully live |
 | Auto-proposal on detected severity | ✅ Fully live |
 | Speech-to-text | ⚠️ Browser-native STT (not yet Agora's native Conversational AI STT engine) |
+| **Agora Conversational AI Engine (native ASR→LLM→TTS)** | ✅ **Separately validated** via Agora's official Next.js quickstart — confirms direct engagement with Agora's managed voice AI pipeline, not just RTC transport |
 | Jira / PagerDuty integration | 🔜 Stubbed — same architecture, swap the webhook |
 | Multi-speaker simultaneous transcription | 🔜 Currently one active mic per client tab |
 
