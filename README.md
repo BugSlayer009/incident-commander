@@ -160,7 +160,7 @@ Being upfront about hackathon-scope tradeoffs, because a working honest prototyp
 | Human-confirm-before-action guardrail | ✅ Fully live |
 | Slack integration | ✅ Fully live |
 | Auto-proposal on detected severity | ✅ Fully live |
-| Speech-to-text | ⚠️ Browser-native STT (not yet Agora's native Conversational AI STT engine) |
+| Speech-to-text | Browser-native STT |
 | **Agora Conversational AI Engine (native ASR→LLM→TTS)** | ✅ **Separately validated** via Agora's official Next.js quickstart — confirms direct engagement with Agora's managed voice AI pipeline, not just RTC transport |
 | Jira / PagerDuty integration | 🔜 Stubbed — same architecture, swap the webhook |
 | Multi-speaker simultaneous transcription | 🔜 Currently one active mic per client tab |
