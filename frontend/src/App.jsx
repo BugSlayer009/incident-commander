@@ -223,6 +223,26 @@ function GlobalStyle() {
       .timeline-row:hover { background: ${C.borderSoft} !important; }
       ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 4px; }
+      @keyframes orb-pulse {
+        0%, 100% { transform: scale(1); opacity: 0.9; }
+        50% { transform: scale(1.08); opacity: 1; }
+      }
+      @keyframes orb-rotate {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      .voice-orb {
+        background: radial-gradient(circle at 40% 35%, #ffffff, #8ec5ff 30%, #7c5cfc 60%, #3b66e0 100%);
+        background-size: 200% 200%;
+        animation: orb-pulse 2.4s ease-in-out infinite, orb-rotate 6s ease infinite;
+      }
+      .voice-orb.idle {
+        animation: none;
+        opacity: 0.5;
+        filter: grayscale(0.6);
+      }
+      .transcript-line { animation: fade-in 0.25s ease-out; }
       @media (prefers-reduced-motion: reduce) {
         .wave-bar, .speaking-ring, .fade-in { animation: none !important; }
       }
@@ -361,11 +381,7 @@ function EmptyState({ text }) {
 
 /* ---------------------------- OVERVIEW ---------------------------- */
 function OverviewView({ clock, state, proposedAction, onConfirm, inRoom, joining, onJoinRoom, onLeaveRoom }) {
-  const factsCount = state.facts.length;
-  const hypothesesCount = state.hypotheses.length;
-  const actionsCount = state.actions.length;
-  const openActions = state.actions.filter((a) => a.status !== "done");
-  const latest = state.timeline[state.timeline.length - 1];
+  const feed = [...state.timeline].slice(-30).reverse();
 
   return (
     <div className="fade-in">
@@ -374,106 +390,108 @@ function OverviewView({ clock, state, proposedAction, onConfirm, inRoom, joining
         subtitle="AI co-pilot for real-time incident management"
         live={inRoom}
         right={
-          <button className="btn-ghost" style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.ink, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-            <Share2 size={14} /> Share Room
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Badge color={C.slate} soft={C.borderSoft}>Deepgram STT</Badge>
+            <Badge color={C.primary} soft={C.primarySoft}>Groq LLM</Badge>
+            <Badge color={C.purple} soft={C.purpleSoft}>Browser TTS</Badge>
+          </div>
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
-        <StatCard icon={Radio} color={inRoom ? C.success : C.slate} soft={inRoom ? C.successSoft : C.borderSoft} label="Room Status" value={inRoom ? "Connected" : "Not joined"} />
-        <StatCard icon={Users} color={C.primary} soft={C.primarySoft} label="Participants" value={PARTICIPANTS.length} />
-        <StatCard icon={AlertTriangle} color={C.danger} soft={C.dangerSoft} label="Open Conflicts" value={state.conflicts.length} />
-        <StatCard icon={Clock} color={C.slate} soft={C.borderSoft} label="Elapsed Time" value={clock} mono />
-      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 0.85fr", gap: 16, alignItems: "start" }}>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr 0.95fr", gap: 16, alignItems: "start" }}>
-        <Card style={{ padding: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div>
-              <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Live Voice Room</p>
-              <span style={{ fontSize: 11.5, color: inRoom ? C.success : C.faint }}>
-                {inRoom ? "● Agora Voice Active — listening to your mic" : "○ Not connected"}
-              </span>
-            </div>
+        {/* LEFT: LIVE CLASSIFIED TRANSCRIPT FEED */}
+        <Card style={{ padding: 20, height: 560, display: "flex", flexDirection: "column" }}>
+          <div style={{ marginBottom: 12 }}>
+            <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Live Transcript</p>
+            <span style={{ fontSize: 11.5, color: C.faint }}>SYNTRIX is listening — classified in real time</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 18 }}>
-            {PARTICIPANTS.map((p) => (
-              <div key={p.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <Avatar initial={p.name[0]} speaking={p.speaking && inRoom} />
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{p.name}</span>
-                <span style={{ fontSize: 10, color: C.faint }}>{p.role}</span>
-              </div>
-            ))}
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, paddingRight: 4 }}>
+            {feed.length === 0 && <EmptyState text="Nothing said yet — join the room and speak" />}
+            {feed.map((item, idx) => {
+              const meta = TYPE_META[item.type] || TYPE_META.fact;
+              const isCritical = item.type === "conflict" || item.type === "action";
+              return (
+                <div
+                  key={item.id || idx}
+                  className="transcript-line"
+                  style={{
+                    borderLeft: `3px solid ${meta.color}`,
+                    background: meta.soft,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    boxShadow: isCritical ? `0 0 0 1px ${meta.color}33` : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <Badge color={meta.color} soft="transparent">{meta.label.toUpperCase()}</Badge>
+                    <span className="mono" style={{ fontSize: 10, color: C.faint }}>
+                      {new Date(item.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: C.ink, lineHeight: 1.4 }}>{item.text}</p>
+                  <p style={{ fontSize: 11, color: C.slate, margin: "2px 0 0" }}>{item.speaker}</p>
+                </div>
+              );
+            })}
           </div>
-          <WaveBars active={inRoom} />
-          <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 16 }}>
+        </Card>
+
+        {/* CENTER: ANIMATED VOICE ORB */}
+        <Card style={{ padding: 24, height: 560, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between" }}>
+          <div />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
+            <div
+              className={`voice-orb ${inRoom ? "" : "idle"}`}
+              style={{ width: 220, height: 220, borderRadius: "50%", boxShadow: inRoom ? "0 0 60px rgba(124,92,252,0.35)" : "none" }}
+            />
+            <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0, color: inRoom ? C.ink : C.faint }}>
+              {inRoom ? "Listening…" : "Ambient"}
+            </p>
+            <WaveBars active={inRoom} />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
             {!inRoom ? (
-              <RoundBtn icon={Mic} bg={C.primary} color="#fff" onClick={onJoinRoom} disabled={joining} title={joining ? "Joining..." : "Join room"} />
+              <RoundBtn icon={Mic} bg={C.primary} color="#fff" onClick={onJoinRoom} disabled={joining} title={joining ? "Joining..." : "Start conversation"} />
             ) : (
-              <RoundBtn icon={MicOff} bg={C.borderSoft} color={C.ink} onClick={onLeaveRoom} title="Mute / leave" />
+              <RoundBtn icon={MicOff} bg={C.danger} color="#fff" onClick={onLeaveRoom} title="End conversation" />
             )}
-            <RoundBtn icon={PhoneOff} bg={C.danger} color="#fff" onClick={onLeaveRoom} disabled={!inRoom} title="Leave room" />
             <RoundBtn icon={MoreHorizontal} bg={C.borderSoft} color={C.ink} />
           </div>
         </Card>
 
+        {/* RIGHT: SUMMARY + SUGGESTION + ACTIONS */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Card style={{ padding: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Incident Summary</p>
-              <span style={{ fontSize: 10.5, color: C.faint }}>Auto-updated</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-              <MiniStat icon={FileText} color={C.primary} soft={C.primarySoft} label="Facts" value={factsCount} />
-              <MiniStat icon={Sparkles} color={C.warning} soft={C.warningSoft} label="Hypotheses" value={hypothesesCount} />
-              <MiniStat icon={ListChecks} color={C.purple} soft={C.purpleSoft} label="Action Items" value={actionsCount} />
-            </div>
-            <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <p style={{ fontSize: 12.5, fontWeight: 600, margin: 0 }}>Latest Update</p>
-                {latest && <span className="mono" style={{ fontSize: 10.5, color: C.faint }}>{new Date(latest.timestamp).toLocaleTimeString()}</span>}
-              </div>
-              <p style={{ fontSize: 12.5, color: C.slate, margin: "4px 0 0", lineHeight: 1.5 }}>
-                {latest ? latest.text : "Waiting for the first update from the room…"}
-              </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+              <MiniStat icon={FileText} color={C.primary} soft={C.primarySoft} label="Facts" value={state.facts.length} />
+              <MiniStat icon={Sparkles} color={C.warning} soft={C.warningSoft} label="Hypotheses" value={state.hypotheses.length} />
+              <MiniStat icon={ListChecks} color={C.purple} soft={C.purpleSoft} label="Actions" value={state.actions.length} />
             </div>
           </Card>
 
           <Card style={{ padding: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>AI Suggestion</p>
-            </div>
+            <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: "0 0 8px" }}>AI Suggestion</p>
             {proposedAction ? (
               <>
-                <p style={{ fontSize: 12.5, color: C.slate, margin: "0 0 14px", lineHeight: 1.5 }}>
-                  {proposedAction.description}
-                </p>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn-primary" onClick={onConfirm} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Confirm</button>
-                </div>
+                <p style={{ fontSize: 12.5, color: C.slate, margin: "0 0 14px", lineHeight: 1.5 }}>{proposedAction.description}</p>
+                <button className="btn-primary" onClick={onConfirm} style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: "none", background: C.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Confirm</button>
               </>
             ) : (
-              <p style={{ fontSize: 12.5, color: C.faint, margin: 0, lineHeight: 1.5 }}>No pending suggestions right now.</p>
+              <p style={{ fontSize: 12.5, color: C.faint, margin: 0 }}>No pending suggestions right now.</p>
             )}
           </Card>
-        </div>
 
-        <Card style={{ padding: 20 }}>
-          <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: "0 0 14px" }}>Active Action Items</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
-            {openActions.length === 0 && <EmptyState text="No open action items yet" />}
-            {openActions.map((a) => (
-              <div key={a.id}>
-                <p style={{ fontSize: 12.5, fontWeight: 600, margin: 0 }}>{a.text}</p>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
-                  <span style={{ fontSize: 11.5, color: C.faint }}>{a.owner ? `Assigned to ${a.owner}` : "Unassigned"}</span>
-                  <Badge color={a.status === "in_progress" ? C.warning : C.slate} soft={a.status === "in_progress" ? C.warningSoft : C.borderSoft}>{a.status || "open"}</Badge>
-                </div>
+          <Card style={{ padding: 20, flex: 1 }}>
+            <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Open Conflicts</p>
+            {state.conflicts.length === 0 && <EmptyState text="No conflicts flagged" />}
+            {state.conflicts.map((c, i) => (
+              <div key={c.id || i} style={{ borderLeft: `3px solid ${C.danger}`, background: C.dangerSoft, borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <p style={{ fontSize: 12.5, fontWeight: 600, margin: 0 }}>{c.text}</p>
               </div>
             ))}
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
     </div>
   );
