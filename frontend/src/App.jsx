@@ -458,7 +458,7 @@ function WaveBars({ active = true }) {
 }
 
 /* ---------------------------- OVERVIEW ---------------------------- */
-function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRoom, onOpenSettings }) {
+function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRoom, onOpenSettings, proposedAction, onConfirmAction }) {
   const feed = [...state.timeline].slice(-30).reverse();
 
   return (
