@@ -71,6 +71,7 @@ function generateMeetingCode() {
 
 export default function SyntrixIncidentCommander() {
   const [currentUser, setCurrentUser] = useState(null);
+const [participants, setParticipants] = useState([]);
   const [screen, setScreen] = useState("landing"); // landing | app
   const [meetingCode, setMeetingCode] = useState(null);
   const [proposedAction, setProposedAction] = useState(null);
@@ -101,11 +102,14 @@ export default function SyntrixIncidentCommander() {
 
     socket.on("action_proposed", (data) => setProposedAction(data));
     socket.on("action_executed", () => setProposedAction(null));
-
+socket.on("participant_joined", (data) => {
+  setParticipants((prev) => [...prev, data]);
+});
     return () => {
       socket.off("state_update");
       socket.off("action_proposed");
       socket.off("action_executed");
+       socket.off("participant_joined");
     };
   }, [screen]);
   const handleEnterApp = async (code) => {
@@ -123,6 +127,7 @@ export default function SyntrixIncidentCommander() {
       });
       setRecognition(rec);
       setInRoom(true);
+      socket.emit("user_joined", { name: currentUser.displayName, photo: currentUser.photoURL, id: socket.id });
     } catch (err) {
       console.error("failed to join room:", err);
       alert("Could not join voice room — check mic permission.");
