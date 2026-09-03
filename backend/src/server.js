@@ -20,6 +20,9 @@ app.use("/api/transcript", transcriptRoutes(io));
 app.use("/api/actions", actionsRoutes(io));
 
 io.on("connection", (socket) => {
+  socket.on("user_joined", (userData) => {
+  socket.broadcast.emit("participant_joined", userData);
+});
   console.log("dashboard connected:", socket.id);
 });
 
