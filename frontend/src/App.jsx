@@ -1,3 +1,4 @@
+import { signInWithGoogle } from "./firebase";
 import axios from "axios";
 import io from "socket.io-client";
 import React, { useState, useEffect } from "react";
@@ -208,16 +209,37 @@ function LandingScreen({ onEnter, onLogin }) {
   };
 
 if (!user) {
-    return (
-      <div style={{ minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg, #f4f7ff 0%, #eef1fb 40%, #e9edfb 100%)" }}>
-        <h1 className="glass-title">SYNTRIX</h1>
-        <button onClick={async () => {const r = await signInWithGoogle();setUser(r.user);onLogin(r.user);}} 
-  className="glass-card-3d" style={{ padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700 }}>
-          Sign in with Google
-        </button>
-      </div>
-    );
-  }
+  return (
+    <div style={{ minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg, #f4f7ff 0%, #eef1fb 40%, #e9edfb 100%)" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&family=Inter:wght@400;500;600&display=swap');
+        .glass-title {
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 900;
+          font-size: clamp(48px, 9vw, 96px);
+          background: linear-gradient(120deg, #3B66E0 0%, #6E7FEF 45%, #A06CF5 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          filter: drop-shadow(0 6px 18px rgba(90,110,240,0.25));
+          text-align: center;
+          margin: 0 0 44px;
+        }
+        .glass-card-3d {
+          background: rgba(255,255,255,0.55);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border: 1px solid rgba(255,255,255,0.8);
+          box-shadow: 0 12px 30px rgba(90,110,240,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        }
+      `}</style>
+      <h1 className="glass-title">SYNTRIX</h1>
+      <button onClick={async () => { const r = await signInWithGoogle(); setUser(r.user); onLogin(r.user); }} className="glass-card-3d" style={{ padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700 }}>
+        Sign in with Google
+      </button>
+    </div>
+  );
+}
   return (
     <div style={{
       minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
