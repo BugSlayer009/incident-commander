@@ -1,3 +1,4 @@
+import { signInWithGoogle } from "./firebase";
 import axios from "axios";
 import io from "socket.io-client";
 import React, { useState, useEffect } from "react";
@@ -69,6 +70,8 @@ function generateMeetingCode() {
 }
 
 export default function SyntrixIncidentCommander() {
+  const [currentUser, setCurrentUser] = useState(null);
+const [participants, setParticipants] = useState([]);
   const [screen, setScreen] = useState("landing"); // landing | app
   const [meetingCode, setMeetingCode] = useState(null);
   const [proposedAction, setProposedAction] = useState(null);
@@ -99,11 +102,14 @@ export default function SyntrixIncidentCommander() {
 
     socket.on("action_proposed", (data) => setProposedAction(data));
     socket.on("action_executed", () => setProposedAction(null));
-
+socket.on("participant_joined", (data) => {
+  setParticipants((prev) => [...prev, data]);
+});
     return () => {
       socket.off("state_update");
       socket.off("action_proposed");
       socket.off("action_executed");
+       socket.off("participant_joined");
     };
   }, [screen]);
   const handleEnterApp = async (code) => {
@@ -121,6 +127,7 @@ export default function SyntrixIncidentCommander() {
       });
       setRecognition(rec);
       setInRoom(true);
+      socket.emit("user_joined", { name: currentUser.displayName, photo: currentUser.photoURL, id: socket.id });
     } catch (err) {
       console.error("failed to join room:", err);
       alert("Could not join voice room — check mic permission.");
@@ -150,9 +157,9 @@ export default function SyntrixIncidentCommander() {
   const ss = String(elapsed % 60).padStart(2, "0");
   const clock = `${hh}:${mm}:${ss}`;
 
-  if (screen === "landing") {
-    return <LandingScreen onEnter={handleEnterApp} />;
-  }
+ if (screen === "landing") {
+  return <LandingScreen onEnter={handleEnterApp} onLogin={setCurrentUser} />;
+}
 
   return (
     <div style={{ display: "flex", background: C.bg, minHeight: "100%", width: "100%", fontFamily: "'Inter', system-ui, sans-serif", color: C.ink }}>
@@ -161,6 +168,7 @@ export default function SyntrixIncidentCommander() {
       <main style={{ flex: 1, minWidth: 0, padding: "22px 26px 40px" }}>
         {view === "overview" && (
           <OverviewView
+          currentUser={currentUser}
   state={incidentState}
   inRoom={inRoom}
   joining={joining}
@@ -186,8 +194,9 @@ export default function SyntrixIncidentCommander() {
 }
 
 /* ---------------------------- LANDING / JOIN-CREATE ---------------------------- */
-function LandingScreen({ onEnter }) {
-  const [mode, setMode] = useState(null); // null | join | create
+function LandingScreen({ onEnter, onLogin }) {
+  const [user, setUser] = useState(null);
+  const [mode, setMode] = useState(null);
   const [codeInput, setCodeInput] = useState("");
   const [createdCode, setCreatedCode] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -204,106 +213,148 @@ function LandingScreen({ onEnter }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
+if (!user) {
+  return (
+    <div style={{ minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg, #f4f7ff 0%, #eef1fb 40%, #e9edfb 100%)" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&family=Inter:wght@400;500;600&display=swap');
+        .glass-title {
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 900;
+          font-size: clamp(48px, 9vw, 96px);
+          background: linear-gradient(120deg, #3B66E0 0%, #6E7FEF 45%, #A06CF5 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          filter: drop-shadow(0 6px 18px rgba(90,110,240,0.25));
+          text-align: center;
+          margin: 0 0 44px;
+        }
+        .glass-card-3d {
+          background: rgba(255,255,255,0.55);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border: 1px solid rgba(255,255,255,0.8);
+          box-shadow: 0 12px 30px rgba(90,110,240,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        }
+      `}</style>
+      <h1 className="glass-title">SYNTRIX</h1>
+      <button onClick={async () => { const r = await signInWithGoogle(); setUser(r.user); onLogin(r.user); }} className="glass-card-3d" style={{ padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700 }}>
+        Sign in with Google
+      </button>
+    </div>
+  );
+}
   return (
     <div style={{
-      minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "radial-gradient(circle at 20% 20%, #3b66e033, transparent 50%), radial-gradient(circle at 80% 80%, #7c5cfc33, transparent 50%), linear-gradient(135deg, #0f1115 0%, #171b2b 100%)",
-      fontFamily: "'Inter', system-ui, sans-serif", position: "relative", overflow: "hidden",
+      minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(160deg, #f4f7ff 0%, #eef1fb 40%, #e9edfb 100%)",
+      fontFamily: "'Inter', system-ui, sans-serif", position: "relative", overflow: "hidden", padding: 20,
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
-        .glass-card {
-          background: rgba(255,255,255,0.06);
-          backdrop-filter: blur(24px);
-          -webkit-backdrop-filter: blur(24px);
-          border: 1px solid rgba(255,255,255,0.14);
-          box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&family=Inter:wght@400;500;600&display=swap');
+        .glass-title {
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 900;
+          font-size: clamp(48px, 9vw, 96px);
+          background: linear-gradient(120deg, #3B66E0 0%, #6E7FEF 45%, #A06CF5 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          filter: drop-shadow(0 6px 18px rgba(90,110,240,0.25));
+          letter-spacing: 0.01em;
+          text-align: center;
+          margin: 0 0 44px;
         }
-        .glass-btn {
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.18);
-          transition: all 0.2s ease;
+        .glass-card-3d {
+          background: rgba(255,255,255,0.55);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border: 1px solid rgba(255,255,255,0.8);
+          box-shadow: 0 12px 30px rgba(90,110,240,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+          transition: all 0.25s ease;
         }
-        .glass-btn:hover { background: rgba(255,255,255,0.14); transform: translateY(-1px); }
-        .glass-input {
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.16);
-          color: #fff;
+        .glass-card-3d:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 18px 40px rgba(90,110,240,0.18), inset 0 1px 0 rgba(255,255,255,0.9);
         }
-        .glass-input::placeholder { color: rgba(255,255,255,0.4); }
-        @keyframes floatOrb { 0%,100%{ transform: translateY(0px);} 50%{ transform: translateY(-14px);} }
-        .float-orb { animation: floatOrb 5s ease-in-out infinite; }
+        .glass-input-light {
+          background: rgba(255,255,255,0.7);
+          border: 1px solid rgba(90,110,240,0.2);
+          color: #171B23;
+        }
+        .glass-input-light::placeholder { color: #b5bcd6; }
       `}</style>
 
-      <div className="glass-card float-orb" style={{ borderRadius: 24, padding: 40, width: 420, position: "relative", zIndex: 2 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 30, justifyContent: "center" }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #3B66E0, #7C5CFC)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <ShieldAlert size={20} color="#fff" />
+      {mode === null && (
+        <>
+          <h1 className="glass-title">SYNTRIX</h1>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center" }}>
+            <button className="glass-card-3d" onClick={handleCreate} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 28px", borderRadius: 18, border: "none", cursor: "pointer", minWidth: 260 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg, #4E7CF6, #6E8CF7)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(78,124,246,0.4)" }}>
+                <Video size={22} color="#fff" />
+              </div>
+              <div style={{ textAlign: "left" }}>
+                <p style={{ margin: 0, fontSize: 12.5, color: "#7A82A0" }}>Create a</p>
+                <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#171B23" }}>New Meeting</p>
+              </div>
+            </button>
+
+            <button className="glass-card-3d" onClick={() => setMode("join")} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 28px", borderRadius: 18, border: "none", cursor: "pointer", minWidth: 260 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg, #9B6CF0, #B58AF5)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(155,108,240,0.4)" }}>
+                <Users size={22} color="#fff" />
+              </div>
+              <div style={{ textAlign: "left" }}>
+                <p style={{ margin: 0, fontSize: 12.5, color: "#7A82A0" }}>Join a</p>
+                <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#171B23" }}>Meeting</p>
+              </div>
+            </button>
           </div>
-          <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "0.02em" }}>SYNTRIX</span>
+        </>
+      )}
+
+      {mode === "join" && (
+        <div className="glass-card-3d" style={{ borderRadius: 24, padding: 40, width: 400 }}>
+          <h2 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 22, textAlign: "center", margin: "0 0 8px", color: "#171B23" }}>Join a Meeting</h2>
+          <p style={{ color: "#7A82A0", fontSize: 13.5, textAlign: "center", margin: "0 0 24px" }}>Enter the 6-digit meeting code</p>
+          <input
+            className="glass-input-light"
+            value={codeInput}
+            onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="000000"
+            maxLength={6}
+            style={{ width: "100%", padding: "16px 0", borderRadius: 14, textAlign: "center", fontSize: 28, letterSpacing: "0.4em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: 20, outline: "none" }}
+          />
+          <button
+            disabled={codeInput.length !== 6}
+            onClick={() => onEnter(codeInput)}
+            style={{ width: "100%", padding: "14px 0", borderRadius: 14, color: "#fff", fontSize: 14.5, fontWeight: 700, cursor: codeInput.length === 6 ? "pointer" : "default", opacity: codeInput.length === 6 ? 1 : 0.4, border: "none", background: "linear-gradient(135deg, #3B66E0, #7C5CFC)" }}
+          >
+            Join Meeting
+          </button>
+          <button onClick={() => setMode(null)} style={{ width: "100%", background: "transparent", border: "none", color: "#7A82A0", fontSize: 13, marginTop: 14, cursor: "pointer" }}>← Back</button>
         </div>
+      )}
 
-        {mode === null && (
-          <>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13.5, textAlign: "center", margin: "0 0 28px" }}>
-              AI Incident Commander — join or start a live room
-            </p>
-            <button className="glass-btn" onClick={handleCreate} style={{ width: "100%", padding: "14px 0", borderRadius: 12, color: "#fff", fontSize: 14.5, fontWeight: 600, cursor: "pointer", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <Video size={17} /> Create a New Meeting
-            </button>
-            <button className="glass-btn" onClick={() => setMode("join")} style={{ width: "100%", padding: "14px 0", borderRadius: 12, color: "#fff", fontSize: 14.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <KeyRound size={17} /> Join with a Code
-            </button>
-          </>
-        )}
-
-        {mode === "join" && (
-          <>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13.5, textAlign: "center", margin: "0 0 20px" }}>
-              Enter the 6-digit meeting code
-            </p>
-            <input
-              className="glass-input"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
-              maxLength={6}
-              style={{ width: "100%", padding: "16px 0", borderRadius: 12, textAlign: "center", fontSize: 28, letterSpacing: "0.4em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: 20, outline: "none" }}
-            />
-            <button
-              className="glass-btn"
-              disabled={codeInput.length !== 6}
-              onClick={() => onEnter(codeInput)}
-              style={{ width: "100%", padding: "14px 0", borderRadius: 12, color: "#fff", fontSize: 14.5, fontWeight: 600, cursor: codeInput.length === 6 ? "pointer" : "default", opacity: codeInput.length === 6 ? 1 : 0.4 }}
-            >
-              Join Meeting
-            </button>
-            <button onClick={() => setMode(null)} style={{ width: "100%", background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 14, cursor: "pointer" }}>← Back</button>
-          </>
-        )}
-
-        {mode === "create" && (
-          <>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>
-              Share this code with your team
-            </p>
-            <div className="glass-input" style={{ borderRadius: 12, padding: "18px 0", textAlign: "center", marginBottom: 16 }}>
-              <span style={{ fontSize: 32, letterSpacing: "0.4em", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{createdCode}</span>
-            </div>
-            <button className="glass-btn" onClick={handleCopy} style={{ width: "100%", padding: "12px 0", borderRadius: 12, color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <Copy size={15} /> {copied ? "Copied!" : "Copy Code"}
-            </button>
-            <button
-              className="glass-btn"
-              onClick={() => onEnter(createdCode)}
-              style={{ width: "100%", padding: "14px 0", borderRadius: 12, color: "#fff", fontSize: 14.5, fontWeight: 600, cursor: "pointer", background: "linear-gradient(135deg, #3B66E0, #7C5CFC)", border: "none" }}
-            >
-              Start Meeting
-            </button>
-            <button onClick={() => setMode(null)} style={{ width: "100%", background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 14, cursor: "pointer" }}>← Back</button>
-          </>
-        )}
-      </div>
+      {mode === "create" && (
+        <div className="glass-card-3d" style={{ borderRadius: 24, padding: 40, width: 400 }}>
+          <h2 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 22, textAlign: "center", margin: "0 0 8px", color: "#171B23" }}>Meeting Created</h2>
+          <p style={{ color: "#7A82A0", fontSize: 13.5, textAlign: "center", margin: "0 0 16px" }}>Share this code with your team</p>
+          <div className="glass-input-light" style={{ borderRadius: 14, padding: "18px 0", textAlign: "center", marginBottom: 16 }}>
+            <span style={{ fontSize: 32, letterSpacing: "0.4em", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: "#171B23" }}>{createdCode}</span>
+          </div>
+          <button onClick={handleCopy} style={{ width: "100%", padding: "12px 0", borderRadius: 14, color: "#171B23", fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid rgba(90,110,240,0.25)", background: "rgba(255,255,255,0.6)" }}>
+            <Copy size={15} /> {copied ? "Copied!" : "Copy Code"}
+          </button>
+          <button
+            onClick={() => onEnter(createdCode)}
+            style={{ width: "100%", padding: "14px 0", borderRadius: 14, color: "#fff", fontSize: 14.5, fontWeight: 700, cursor: "pointer", background: "linear-gradient(135deg, #3B66E0, #7C5CFC)", border: "none" }}
+          >
+            Start Meeting
+          </button>
+          <button onClick={() => setMode(null)} style={{ width: "100%", background: "transparent", border: "none", color: "#7A82A0", fontSize: 13, marginTop: 14, cursor: "pointer" }}>← Back</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -458,7 +509,7 @@ function WaveBars({ active = true }) {
 }
 
 /* ---------------------------- OVERVIEW ---------------------------- */
-function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRoom, onOpenSettings, proposedAction, onConfirmAction }) {
+function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRoom, onOpenSettings, proposedAction, onConfirmAction, currentUser }) {
   const feed = [...state.timeline].slice(-30).reverse();
 
   return (
@@ -545,6 +596,20 @@ function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRo
               </div>
             ))}
           </Card>
+          <Card style={{ padding: 20 }}>
+  <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Participants</p>
+  {currentUser ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <img src={currentUser.photoURL} alt="" style={{ width: 34, height: 34, borderRadius: "50%" }} />
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{currentUser.displayName}</p>
+      </div>
+      <span style={{ width: 10, height: 10, borderRadius: "50%", background: inRoom && !micMuted ? C.success : C.danger }} />
+    </div>
+  ) : (
+    <EmptyState text="No participant info" />
+  )}
+</Card>
         </div>
       </div>
     </div>
