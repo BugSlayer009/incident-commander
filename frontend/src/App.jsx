@@ -504,7 +504,7 @@ function WaveBars({ active = true }) {
 }
 
 /* ---------------------------- OVERVIEW ---------------------------- */
-function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRoom, onOpenSettings, proposedAction, onConfirmAction }) {
+function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRoom, onOpenSettings, proposedAction, onConfirmAction, currentUser }) {
   const feed = [...state.timeline].slice(-30).reverse();
 
   return (
@@ -591,6 +591,20 @@ function OverviewView({ state, inRoom, joining, micMuted, onToggleMic, onLeaveRo
               </div>
             ))}
           </Card>
+          <Card style={{ padding: 20 }}>
+  <p className="display" style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Participants</p>
+  {currentUser ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <img src={currentUser.photoURL} alt="" style={{ width: 34, height: 34, borderRadius: "50%" }} />
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{currentUser.displayName}</p>
+      </div>
+      <span style={{ width: 10, height: 10, borderRadius: "50%", background: inRoom && !micMuted ? C.success : C.danger }} />
+    </div>
+  ) : (
+    <EmptyState text="No participant info" />
+  )}
+</Card>
         </div>
       </div>
     </div>
